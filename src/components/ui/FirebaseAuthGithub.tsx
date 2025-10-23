@@ -1,32 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { auth } from "../../lib/firebase";
-import {
-  GithubAuthProvider,
-  signInWithPopup,
-  User,
-  browserPopupRedirectResolver,
-} from "firebase/auth";
 
-const uiConfig = {
-  signInFlow: "popup",
-  signInOptions: [
-    {
-      provider: GithubAuthProvider.PROVIDER_ID,
-      // You can add scopes and custom parameters here if needed
-    },
-  ],
-  callbacks: {
-    signInSuccessWithAuthResult: () => false, // Prevents redirect
-  },
-};
+const FirebaseAuthGithub = () => {
+  const [user, setUser] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
 
-const FirebaseAuthGithub: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
+  React.useEffect(() => {
     const unregisterAuthObserver = auth.onAuthStateChanged((user) =>
-      setUser(user as User),
+      setUser(user),
     );
     return () => unregisterAuthObserver();
   }, []);
@@ -69,13 +50,24 @@ const FirebaseAuthGithub: React.FC = () => {
 
   const handleGithubSignIn = async () => {
     setLoading(true);
-    const provider = new GithubAuthProvider();
+    
     try {
-      await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+      // Dynamically import Firebase auth functions
+      const { GithubAuthProvider, signInWithPopup } = await import("firebase/auth");
+      const provider = new GithubAuthProvider();
+      
+      // Add custom parameters to ensure proper OAuth flow
+      provider.setCustomParameters({
+        allow_signup: 'false'
+      });
+      
+      // Try popup sign in first
+      await signInWithPopup(auth, provider);
     } catch (error: any) {
       console.error("GitHub sign-in error:", error);
       console.error("Error code:", error.code);
       console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
 
       // Handle specific error cases
       let errorMessage = error.message || "Unknown error occurred";
@@ -92,10 +84,29 @@ const FirebaseAuthGithub: React.FC = () => {
       ) {
         errorMessage =
           "GitHub OAuth configuration error. Please contact the site administrator.";
+      } else if (error.code === "auth/unauthorized-domain") {
+        errorMessage =
+          "This domain is not authorized for OAuth operations. Please contact the site administrator.";
+      } else if (error.code === "auth/network-request-failed") {
+        errorMessage =
+          "Network error. Please check your internet connection and try again.";
+      } else if (error.code === "auth/cancelled-popup-request") {
+        errorMessage =
+          "Popup request was cancelled. Please try again.";
+      } else if (error.code === "auth/web-storage-unsupported") {
+        errorMessage =
+          "Web storage is not supported or is disabled. Please enable cookies and try again.";
+      } else if (error.code === "auth/internal-error") {
+        errorMessage =
+          "Internal error occurred. Please try again later.";
+      } else {
+        // Log the full error for debugging
+        console.error("Full error object:", error);
+        errorMessage = `GitHub sign-in failed: ${error.message || "Unknown error"}. Error code: ${error.code || "N/A"}. Please contact support if this persists.`;
       }
 
       // Show user-friendly error message
-      alert(`GitHub sign-in failed: ${errorMessage}`);
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
